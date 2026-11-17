@@ -122,6 +122,7 @@ fun AppNavigation() {
     val runtimeStatus by viewModel.runtimeStatus.collectAsStateWithLifecycle()
     val manualVolumePercent by viewModel.manualVolumePercent.collectAsStateWithLifecycle()
     val backupState by viewModel.backupState.collectAsStateWithLifecycle()
+    val updateState by viewModel.updateState.collectAsStateWithLifecycle()
     val snackbarMessage by viewModel.snackbarMessage.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
@@ -346,11 +347,15 @@ fun AppNavigation() {
                             SettingsScreen(
                                 preferences = preferences,
                                 backupState = backupState,
+                                updateState = updateState,
                                 onSetThemeMode = viewModel::setThemeMode,
                                 onSetDefaultRestoreOnExit = viewModel::setDefaultRestoreOnExit,
                                 onSetPollIntervalMs = viewModel::setPollIntervalMs,
                                 onExportBackupUri = { uri -> viewModel.exportBackupToUri(context, uri) },
-                                onImportBackupUri = { uri -> viewModel.importBackupFromUri(context, uri) }
+                                onImportBackupUri = { uri -> viewModel.importBackupFromUri(context, uri) },
+                                onCheckForUpdates = viewModel::checkForUpdates,
+                                onDismissUpdateDialog = viewModel::dismissUpdateDialog,
+                                onShowMessage = viewModel::showMessage
                             )
                         }
                     }

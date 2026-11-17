@@ -1,5 +1,6 @@
 package com.muzrc.ui.screens
 
+import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -21,7 +22,9 @@ import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.UploadFile
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -35,6 +38,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -48,12 +52,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
+import com.muzrc.BuildConfig
 import com.muzrc.data.UsageAccessHelper
 import com.muzrc.model.ThemeMode
 import com.muzrc.model.UserPreferences
 import com.muzrc.ui.components.SectionHeader
 import com.muzrc.ui.components.StatusPill
 import com.muzrc.ui.theme.JetBrainsMonoFontFamily
+import com.muzrc.ui.viewmodel.AppUpdateUiState
 import com.muzrc.ui.viewmodel.BackupState
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -64,11 +70,15 @@ import kotlin.math.roundToInt
 fun SettingsScreen(
     preferences: UserPreferences,
     backupState: BackupState,
+    updateState: AppUpdateUiState,
     onSetThemeMode: (ThemeMode) -> Unit,
     onSetDefaultRestoreOnExit: (Boolean) -> Unit,
     onSetPollIntervalMs: (Long) -> Unit,
     onExportBackupUri: (Uri) -> Unit,
     onImportBackupUri: (Uri) -> Unit,
+    onCheckForUpdates: () -> Unit,
+    onDismissUpdateDialog: () -> Unit,
+    onShowMessage: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -378,5 +388,145 @@ fun SettingsScreen(
                 }
             }
         }
+
+        // 5. Manual App Update Card (GitHub Release Checker)
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
+                shape = MaterialTheme.shapes.medium,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.SystemUpdate,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = "Kemaskini Aplikasi",
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                                Text(
+                                    text = "Semak keluaran APK terkini secara manual daripada GitHub",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        StatusPill(
+                            label = "v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+                            containerColor = MaterialTheme.colorScheme.primaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+
+                    if (!updateState.statusMessage.isNullOrBlank()) {
+                        Text(
+                            text = updateState.statusMessage,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    Button(
+                        onClick = onCheckForUpdates,
+                        enabled = !updateState.isChecking,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("check_update_button")
+                    ) {
+                        if (updateState.isChecking) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.onPrimary
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Menyemak Kemaskini...")
+                        } else {
+                            Icon(
+                                imageVector = Icons.Rounded.SystemUpdate,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Semak Kemaskini")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    val release = updateState.availableRelease
+    if (release != null) {
+        AlertDialog(
+            onDismissRequest = onDismissUpdateDialog,
+            title = {
+                Text("Kemaskini Baharu Tersedia (v${release.latestVersion})")
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "Versi semasa: v${BuildConfig.VERSION_NAME} (Build ${BuildConfig.VERSION_CODE})
+" +
+                            "Versi baharu: v${release.latestVersion} (Build ${release.versionCode})",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    HorizontalDivider()
+                    Text(
+                        text = "Nota Keluaran:",
+                        style = MaterialTheme.typography.titleSmall
+                    )
+                    Text(
+                        text = release.releaseNotes,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        try {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(release.downloadUrl)).apply {
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            context.startActivity(intent)
+                            onDismissUpdateDialog()
+                        } catch (e: Exception) {
+                            onShowMessage("Gagal membuka pautan muat turun: ${e.localizedMessage}")
+                        }
+                    }
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Download,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Muat Turun APK")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = onDismissUpdateDialog) {
+                    Text("Nanti")
+                }
+            }
+        )
     }
 }

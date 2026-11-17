@@ -4,6 +4,9 @@ import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.muzrc.BuildConfig
+import com.muzrc.data.AppReleaseInfo
+import com.muzrc.data.AppUpdateChecker
 import com.muzrc.data.AudioVolumeController
 import com.muzrc.data.ScheduleEvaluator
 import com.muzrc.data.SenyapRepository
@@ -35,6 +38,12 @@ import java.util.UUID
 data class BackupState(
     val isProcessing: Boolean = false,
     val statusMessage: String? = null
+)
+
+data class AppUpdateUiState(
+    val isChecking: Boolean = false,
+    val statusMessage: String? = null,
+    val availableRelease: AppReleaseInfo? = null
 )
 
 class MainViewModel(
@@ -113,6 +122,9 @@ class MainViewModel(
 
     private val _backupState = MutableStateFlow(BackupState())
     val backupState: StateFlow<BackupState> = _backupState.asStateFlow()
+
+    private val _updateState = MutableStateFlow(AppUpdateUiState())
+    val updateState: StateFlow<AppUpdateUiState> = _updateState.asStateFlow()
 
     private val _snackbarMessage = MutableStateFlow<String?>(null)
     val snackbarMessage: StateFlow<String?> = _snackbarMessage.asStateFlow()
@@ -217,7 +229,7 @@ class MainViewModel(
         )
         viewModelScope.launch {
             repository.saveSchedule(schedule)
-            _snackbarMessage.value = "Jadual \"${schedule.title}\" disimpan."
+            _snackbarMessage.value = "Jadual "${schedule.title}" disimpan."
         }
     }
 
@@ -230,7 +242,7 @@ class MainViewModel(
     fun deleteSchedule(schedule: QuietSchedule) {
         viewModelScope.launch {
             repository.deleteSchedule(schedule.id)
-            _snackbarMessage.value = "Jadual \"${schedule.title}\" dipadamkan."
+            _snackbarMessage.value = "Jadual "${schedule.title}" dipadamkan."
         }
     }
 
@@ -254,6 +266,47 @@ class MainViewModel(
             hour = cal.get(Calendar.HOUR_OF_DAY),
             minute = cal.get(Calendar.MINUTE)
         )
+    }
+
+    fun checkForUpdates() {
+        if (_updateState.value.isChecking) return
+        viewModelScope.launch {
+            _updateState.value = AppUpdateUiState(
+                isChecking = true,
+                statusMessage = "Menyemak kemaskini daripada GitHub..."
+            )
+            AppUpdateChecker.checkForUpdate()
+                .onSuccess { info ->
+                    if (info.isUpdateAvailable) {
+                        _updateState.value = AppUpdateUiState(
+                            isChecking = false,
+                            statusMessage = "Versi baharu v${info.latestVersion} tersedia!",
+                            availableRelease = info
+                        )
+                    } else {
+                        val msg = "Aplikasi sudah menggunakan versi terkini (v${BuildConfig.VERSION_NAME})."
+                        _updateState.value = AppUpdateUiState(
+                            isChecking = false,
+                            statusMessage = msg,
+                            availableRelease = null
+                        )
+                        _snackbarMessage.value = msg
+                    }
+                }
+                .onFailure { error ->
+                    val reason = error.localizedMessage ?: "Sila semak sambungan internet anda."
+                    _updateState.value = AppUpdateUiState(
+                        isChecking = false,
+                        statusMessage = "Gagal menyemak kemaskini: $reason",
+                        availableRelease = null
+                    )
+                    _snackbarMessage.value = "Gagal menyemak kemaskini."
+                }
+        }
+    }
+
+    fun dismissUpdateDialog() {
+        _updateState.value = _updateState.value.copy(availableRelease = null)
     }
 
     fun exportBackupToUri(context: Context, uri: Uri) {
