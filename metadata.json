@@ -1,0 +1,6 @@
+{
+  "name": "SenyapPintar",
+  "description": "Alat kawalan kelantangan media pintar dalam Bahasa Melayu dengan profil aplikasi, jadual mod senyap, papan pemuka pemantauan, eksport log aktiviti harian, tema gelap, dan sandaran awan.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

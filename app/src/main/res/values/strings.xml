@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">SenyapPintar</string>
+    <string name="notif_channel_monitor_name">Pemantauan Media Pintar</string>
+    <string name="notif_channel_monitor_desc">Menjalankan pemantauan aplikasi hadapan bagi mengawal kelantangan media secara automatik.</string>
+    <string name="notif_monitor_title">SenyapPintar Aktif</string>
+    <string name="notif_monitor_idle">Memantau pelancaran aplikasi dan jadual mod senyap.</string>
+    <string name="action_pause_monitor">Jeda</string>
+    <string name="cd_app_icon">Ikon aplikasi %1$s</string>
+    <string name="cd_hero_illustration">Ilustrasi perisai akustik SenyapPintar</string>
+</resources>

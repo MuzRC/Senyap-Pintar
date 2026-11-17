@@ -1,0 +1,187 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidTimestamp(ts) {
+      return ts is timestamp && ts <= request.time;
+    }
+
+    function isValidUserPreferences(data, userId) {
+      return data.userId is string &&
+             data.userId == userId &&
+             data.themeMode in ['SISTEM', 'GELAP', 'TERANG'] &&
+             data.monitoringEnabled is bool &&
+             data.defaultRestoreOnExit is bool &&
+             data.pollIntervalMs is int &&
+             data.pollIntervalMs >= 500 &&
+             data.pollIntervalMs <= 10000 &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidAppSoundProfile(data, userId) {
+      return data.userId is string &&
+             data.userId == userId &&
+             data.packageName is string &&
+             data.packageName.size() >= 1 &&
+             data.packageName.size() <= 160 &&
+             data.appName is string &&
+             data.appName.size() >= 1 &&
+             data.appName.size() <= 100 &&
+             data.monitored is bool &&
+             data.profileMode in ['SENYAP', 'RENDAH', 'KHUSUS', 'NORMAL'] &&
+             data.targetVolumePercent is int &&
+             data.targetVolumePercent >= 0 &&
+             data.targetVolumePercent <= 100 &&
+             data.restoreOnExit is bool &&
+             data.scheduleOnly is bool &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidQuietSchedule(data, userId) {
+      return data.userId is string &&
+             data.userId == userId &&
+             data.title is string &&
+             data.title.size() >= 1 &&
+             data.title.size() <= 80 &&
+             data.startHour is int &&
+             data.startHour >= 0 &&
+             data.startHour <= 23 &&
+             data.startMinute is int &&
+             data.startMinute >= 0 &&
+             data.startMinute <= 59 &&
+             data.endHour is int &&
+             data.endHour >= 0 &&
+             data.endHour <= 23 &&
+             data.endMinute is int &&
+             data.endMinute >= 0 &&
+             data.endMinute <= 59 &&
+             data.daysOfWeek is list &&
+             data.daysOfWeek.size() >= 1 &&
+             data.daysOfWeek.size() <= 7 &&
+             data.daysOfWeek[0] is int &&
+             data.targetVolumePercent is int &&
+             data.targetVolumePercent >= 0 &&
+             data.targetVolumePercent <= 100 &&
+             data.applyToAllApps is bool &&
+             data.enabled is bool &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    match /users/{userId}/settings/{settingId} {
+      allow get: if isOwner(userId) && isValidId(settingId);
+      allow list: if isOwner(userId);
+      allow create: if isOwner(userId) &&
+                       isValidId(settingId) &&
+                       incoming().keys().hasAll([
+                         'userId', 'themeMode', 'monitoringEnabled',
+                         'defaultRestoreOnExit', 'pollIntervalMs',
+                         'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'userId', 'themeMode', 'monitoringEnabled',
+                         'defaultRestoreOnExit', 'pollIntervalMs',
+                         'createdAt', 'updatedAt'
+                       ]) &&
+                       isValidUserPreferences(incoming(), userId);
+      allow update: if isOwner(userId) &&
+                       isValidId(settingId) &&
+                       isValidUserPreferences(incoming(), userId) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'themeMode', 'monitoringEnabled',
+                         'defaultRestoreOnExit', 'pollIntervalMs', 'updatedAt'
+                       ]);
+      allow delete: if isOwner(userId) && isValidId(settingId);
+    }
+
+    match /users/{userId}/profiles/{profileId} {
+      allow get: if isOwner(userId) && isValidId(profileId);
+      allow list: if isOwner(userId);
+      allow create: if isOwner(userId) &&
+                       isValidId(profileId) &&
+                       incoming().keys().hasAll([
+                         'userId', 'packageName', 'appName', 'monitored',
+                         'profileMode', 'targetVolumePercent', 'restoreOnExit',
+                         'scheduleOnly', 'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'userId', 'packageName', 'appName', 'monitored',
+                         'profileMode', 'targetVolumePercent', 'restoreOnExit',
+                         'scheduleOnly', 'createdAt', 'updatedAt'
+                       ]) &&
+                       isValidAppSoundProfile(incoming(), userId);
+      allow update: if isOwner(userId) &&
+                       isValidId(profileId) &&
+                       isValidAppSoundProfile(incoming(), userId) &&
+                       incoming().userId == existing().userId &&
+                       incoming().packageName == existing().packageName &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'appName', 'monitored', 'profileMode',
+                         'targetVolumePercent', 'restoreOnExit',
+                         'scheduleOnly', 'updatedAt'
+                       ]);
+      allow delete: if isOwner(userId) && isValidId(profileId);
+    }
+
+    match /users/{userId}/schedules/{scheduleId} {
+      allow get: if isOwner(userId) && isValidId(scheduleId);
+      allow list: if isOwner(userId);
+      allow create: if isOwner(userId) &&
+                       isValidId(scheduleId) &&
+                       incoming().keys().hasAll([
+                         'userId', 'title', 'startHour', 'startMinute',
+                         'endHour', 'endMinute', 'daysOfWeek',
+                         'targetVolumePercent', 'applyToAllApps', 'enabled',
+                         'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'userId', 'title', 'startHour', 'startMinute',
+                         'endHour', 'endMinute', 'daysOfWeek',
+                         'targetVolumePercent', 'applyToAllApps', 'enabled',
+                         'createdAt', 'updatedAt'
+                       ]) &&
+                       isValidQuietSchedule(incoming(), userId);
+      allow update: if isOwner(userId) &&
+                       isValidId(scheduleId) &&
+                       isValidQuietSchedule(incoming(), userId) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'title', 'startHour', 'startMinute',
+                         'endHour', 'endMinute', 'daysOfWeek',
+                         'targetVolumePercent', 'applyToAllApps', 'enabled',
+                         'updatedAt'
+                       ]);
+      allow delete: if isOwner(userId) && isValidId(scheduleId);
+    }
+  }
+}

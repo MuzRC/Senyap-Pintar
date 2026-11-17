@@ -1,0 +1,103 @@
+{
+  "entities": {
+    "UserPreferences": {
+      "title": "UserPreferences",
+      "description": "Tetapan global aplikasi SenyapPintar dan konfigurasi tema bagi setiap pengguna.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "UID pengguna Firebase yang disahkan." },
+        "themeMode": { "type": "string", "enum": ["SISTEM", "GELAP", "TERANG"], "description": "Mod tema antara muka." },
+        "monitoringEnabled": { "type": "boolean", "description": "Status suis induk pemantauan pintar." },
+        "defaultRestoreOnExit": { "type": "boolean", "description": "Pulihkan kelantangan asal secara lalai selepas keluar aplikasi." },
+        "pollIntervalMs": { "type": "integer", "description": "Selang pemantauan aplikasi hadapan dalam milisaat." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Masa ciptaan pelayan." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Masa kemas kini terakhir pelayan." }
+      },
+      "required": [
+        "userId",
+        "themeMode",
+        "monitoringEnabled",
+        "defaultRestoreOnExit",
+        "pollIntervalMs",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "AppSoundProfile": {
+      "title": "AppSoundProfile",
+      "description": "Profil suara media khusus bagi setiap aplikasi yang dipantau.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "UID pengguna Firebase yang disahkan." },
+        "packageName": { "type": "string", "description": "Nama pakej Android aplikasi." },
+        "appName": { "type": "string", "description": "Nama paparan aplikasi." },
+        "monitored": { "type": "boolean", "description": "Adakah aplikasi ini aktif dipantau." },
+        "profileMode": { "type": "string", "enum": ["SENYAP", "RENDAH", "KHUSUS", "NORMAL"], "description": "Mod kelantangan aplikasi." },
+        "targetVolumePercent": { "type": "integer", "description": "Sasaran peratusan kelantangan media (0-100)." },
+        "restoreOnExit": { "type": "boolean", "description": "Pulihkan kelantangan asal selepas keluar daripada aplikasi." },
+        "scheduleOnly": { "type": "boolean", "description": "Senyapkan hanya apabila jadual mod senyap aktif." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Masa ciptaan pelayan." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Masa kemas kini terakhir pelayan." }
+      },
+      "required": [
+        "userId",
+        "packageName",
+        "appName",
+        "monitored",
+        "profileMode",
+        "targetVolumePercent",
+        "restoreOnExit",
+        "scheduleOnly",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "QuietSchedule": {
+      "title": "QuietSchedule",
+      "description": "Jadual mod senyap automatik mengikut masa dan hari tertentu.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "UID pengguna Firebase yang disahkan." },
+        "title": { "type": "string", "description": "Tajuk jadual mod senyap." },
+        "startHour": { "type": "integer", "description": "Jam mula (0-23)." },
+        "startMinute": { "type": "integer", "description": "Minit mula (0-59)." },
+        "endHour": { "type": "integer", "description": "Jam tamat (0-23)." },
+        "endMinute": { "type": "integer", "description": "Minit tamat (0-59)." },
+        "daysOfWeek": { "type": "array", "description": "Senarai hari aktif dalam minggu (1=Isnin .. 7=Ahad)." },
+        "targetVolumePercent": { "type": "integer", "description": "Sasaran kelantangan media semasa jadual aktif (0-100)." },
+        "applyToAllApps": { "type": "boolean", "description": "Terapkan kepada semua aplikasi atau aplikasi dipantau sahaja." },
+        "enabled": { "type": "boolean", "description": "Status pengaktifan jadual." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Masa ciptaan pelayan." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Masa kemas kini terakhir pelayan." }
+      },
+      "required": [
+        "userId",
+        "title",
+        "startHour",
+        "startMinute",
+        "endHour",
+        "endMinute",
+        "daysOfWeek",
+        "targetVolumePercent",
+        "applyToAllApps",
+        "enabled",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/settings/{settingId}": {
+      "schema": { "$ref": "#/entities/UserPreferences" },
+      "description": "Menyimpan tetapan global pengguna seperti tema, status suis induk, dan kelakuan pemulihan."
+    },
+    "/users/{userId}/profiles/{profileId}": {
+      "schema": { "$ref": "#/entities/AppSoundProfile" },
+      "description": "Menyimpan profil kelantangan media khusus setiap aplikasi milik pengguna."
+    },
+    "/users/{userId}/schedules/{scheduleId}": {
+      "schema": { "$ref": "#/entities/QuietSchedule" },
+      "description": "Menyimpan jadual waktu mod senyap milik pengguna."
+    }
+  }
+}
