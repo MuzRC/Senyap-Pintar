@@ -1,5 +1,8 @@
 package com.muzrc.ui.screens
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -13,13 +16,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.CloudDone
-import androidx.compose.material.icons.rounded.CloudDownload
-import androidx.compose.material.icons.rounded.CloudUpload
+import androidx.compose.material.icons.rounded.Backup
 import androidx.compose.material.icons.rounded.DarkMode
-import androidx.compose.material.icons.rounded.Logout
+import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.material.icons.rounded.UploadFile
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -37,7 +39,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,20 +46,15 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.credentials.CredentialManager
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
-import com.muzrc.auth.signOutUser
 import com.muzrc.data.UsageAccessHelper
 import com.muzrc.model.ThemeMode
 import com.muzrc.model.UserPreferences
-import com.muzrc.service.MediaMonitorForegroundService
 import com.muzrc.ui.components.SectionHeader
 import com.muzrc.ui.components.StatusPill
 import com.muzrc.ui.theme.JetBrainsMonoFontFamily
-import com.muzrc.ui.viewmodel.CloudSyncState
-import com.google.firebase.Firebase
-import com.google.firebase.auth.auth
+import com.muzrc.ui.viewmodel.BackupState
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -67,19 +63,32 @@ import kotlin.math.roundToInt
 @Composable
 fun SettingsScreen(
     preferences: UserPreferences,
-    cloudSyncState: CloudSyncState,
+    backupState: BackupState,
     onSetThemeMode: (ThemeMode) -> Unit,
     onSetDefaultRestoreOnExit: (Boolean) -> Unit,
     onSetPollIntervalMs: (Long) -> Unit,
-    onBackupNow: () -> Unit,
-    onRestoreFromCloud: () -> Unit,
+    onExportBackupUri: (Uri) -> Unit,
+    onImportBackupUri: (Uri) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val credentialManager = remember(context) { CredentialManager.create(context) }
-    val currentUser = Firebase.auth.currentUser
     val dateTimeFormatter = remember { SimpleDateFormat("dd MMM yyyy, HH:mm", Locale("ms", "MY")) }
+
+    val exportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri != null) {
+            onExportBackupUri(uri)
+        }
+    }
+
+    val importLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            onImportBackupUri(uri)
+        }
+    }
 
     var hasUsagePermission by remember {
         mutableStateOf(UsageAccessHelper.hasUsageStatsPermission(context))
@@ -96,12 +105,12 @@ fun SettingsScreen(
     ) {
         item {
             SectionHeader(
-                title = "Tetapan & Sandaran Awan",
-                subtitle = "Urus tema malam, automasi pemulihan, dan penyegerakan akaun"
+                title = "Tetapan & Sandaran",
+                subtitle = "Urus tema malam, automasi pemulihan, dan sandaran fail tempatan"
             )
         }
 
-        // 1. Cloud Backup & Account Card
+        // 1. Local File Backup & Restore Card (no login / API keys required)
         item {
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
@@ -114,30 +123,30 @@ fun SettingsScreen(
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
-                            imageVector = Icons.Rounded.CloudDone,
+                            imageVector = Icons.Rounded.Backup,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.primary
                         )
                         Spacer(modifier = Modifier.width(10.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = currentUser?.displayName ?: "Akaun Google Disambung",
+                                text = "Sandaran Fail Tempatan (JSON)",
                                 style = MaterialTheme.typography.titleMedium
                             )
                             Text(
-                                text = currentUser?.email ?: "-",
+                                text = "Simpan atau pulihkan profil dan jadual tanpa perlu log masuk",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
 
-                    val lastBackupLabel = preferences.lastCloudBackupAtMillis?.let {
+                    val lastBackupLabel = preferences.lastBackupAtMillis?.let {
                         "Sandaran terakhir: ${dateTimeFormatter.format(Date(it))}"
-                    } ?: "Belum pernah disandarkan secara manual"
+                    } ?: "Belum pernah dieksport"
 
                     Text(
-                        text = cloudSyncState.statusMessage ?: lastBackupLabel,
+                        text = backupState.statusMessage ?: lastBackupLabel,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -147,13 +156,15 @@ fun SettingsScreen(
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Button(
-                            onClick = onBackupNow,
-                            enabled = !cloudSyncState.isSyncing,
+                            onClick = {
+                                exportLauncher.launch("senyappintar_sandaran.json")
+                            },
+                            enabled = !backupState.isProcessing,
                             modifier = Modifier
                                 .weight(1f)
-                                .testTag("backup_now_button")
+                                .testTag("export_backup_button")
                         ) {
-                            if (cloudSyncState.isSyncing) {
+                            if (backupState.isProcessing) {
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(16.dp),
                                     strokeWidth = 2.dp,
@@ -161,7 +172,7 @@ fun SettingsScreen(
                                 )
                             } else {
                                 Icon(
-                                    imageVector = Icons.Rounded.CloudUpload,
+                                    imageVector = Icons.Rounded.Download,
                                     contentDescription = null,
                                     modifier = Modifier.size(18.dp)
                                 )
@@ -171,40 +182,22 @@ fun SettingsScreen(
                         }
 
                         FilledTonalButton(
-                            onClick = onRestoreFromCloud,
-                            enabled = !cloudSyncState.isSyncing,
+                            onClick = {
+                                importLauncher.launch(arrayOf("application/json", "text/plain", "*/*"))
+                            },
+                            enabled = !backupState.isProcessing,
                             modifier = Modifier
                                 .weight(1f)
-                                .testTag("restore_cloud_button")
+                                .testTag("restore_backup_button")
                         ) {
                             Icon(
-                                imageVector = Icons.Rounded.CloudDownload,
+                                imageVector = Icons.Rounded.UploadFile,
                                 contentDescription = null,
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text("Pulihkan")
                         }
-                    }
-
-                    HorizontalDivider()
-
-                    OutlinedButton(
-                        onClick = {
-                            MediaMonitorForegroundService.stopMonitoring(context)
-                            signOutUser(credentialManager, scope)
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("sign_out_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Logout,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Log Keluar Akaun Google")
                     }
                 }
             }

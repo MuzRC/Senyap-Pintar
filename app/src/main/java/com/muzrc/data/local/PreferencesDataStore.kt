@@ -30,7 +30,7 @@ class PreferencesDataStore(private val context: Context) {
         val MONITORING_ENABLED = booleanPreferencesKey("monitoring_enabled")
         val DEFAULT_RESTORE_ON_EXIT = booleanPreferencesKey("default_restore_on_exit")
         val POLL_INTERVAL_MS = longPreferencesKey("poll_interval_ms")
-        val LAST_CLOUD_BACKUP_AT = longPreferencesKey("last_cloud_backup_at")
+        val LAST_BACKUP_AT = longPreferencesKey("last_backup_at")
         val SAVED_RESTORE_VOLUME = intPreferencesKey("saved_restore_volume")
         val MANAGED_PACKAGE_NAME = stringPreferencesKey("managed_package_name")
         val MANAGED_APP_NAME = stringPreferencesKey("managed_app_name")
@@ -42,7 +42,7 @@ class PreferencesDataStore(private val context: Context) {
             monitoringEnabled = prefs[Keys.MONITORING_ENABLED] ?: false,
             defaultRestoreOnExit = prefs[Keys.DEFAULT_RESTORE_ON_EXIT] ?: true,
             pollIntervalMs = (prefs[Keys.POLL_INTERVAL_MS] ?: 1200L).coerceIn(500L, 10000L),
-            lastCloudBackupAtMillis = prefs[Keys.LAST_CLOUD_BACKUP_AT]
+            lastBackupAtMillis = prefs[Keys.LAST_BACKUP_AT]
         )
     }
 
@@ -70,14 +70,14 @@ class PreferencesDataStore(private val context: Context) {
             store[Keys.MONITORING_ENABLED] = prefs.monitoringEnabled
             store[Keys.DEFAULT_RESTORE_ON_EXIT] = prefs.defaultRestoreOnExit
             store[Keys.POLL_INTERVAL_MS] = prefs.pollIntervalMs.coerceIn(500L, 10000L)
-            if (prefs.lastCloudBackupAtMillis != null) {
-                store[Keys.LAST_CLOUD_BACKUP_AT] = prefs.lastCloudBackupAtMillis
+            if (prefs.lastBackupAtMillis != null) {
+                store[Keys.LAST_BACKUP_AT] = prefs.lastBackupAtMillis
             }
         }
     }
 
-    suspend fun setLastCloudBackupAt(timestampMillis: Long) {
-        context.dataStore.edit { it[Keys.LAST_CLOUD_BACKUP_AT] = timestampMillis }
+    suspend fun setLastBackupAt(timestampMillis: Long) {
+        context.dataStore.edit { it[Keys.LAST_BACKUP_AT] = timestampMillis }
     }
 
     suspend fun getActiveSession(): ActiveVolumeSession {

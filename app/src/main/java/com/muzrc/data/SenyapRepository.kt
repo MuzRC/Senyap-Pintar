@@ -4,10 +4,10 @@ import com.muzrc.data.local.ActivityLogDao
 import com.muzrc.data.local.ActivityLogEntity
 import com.muzrc.data.local.AppProfileDao
 import com.muzrc.data.local.AppProfileEntity
+import com.muzrc.data.local.LocalBackupManager
 import com.muzrc.data.local.PreferencesDataStore
 import com.muzrc.data.local.QuietScheduleDao
 import com.muzrc.data.local.QuietScheduleEntity
-import com.muzrc.data.remote.CloudBackupRepository
 import com.muzrc.model.ActivityLogEntry
 import com.muzrc.model.AppSoundProfile
 import com.muzrc.model.InstalledAppInfo
@@ -15,12 +15,9 @@ import com.muzrc.model.LogActionType
 import com.muzrc.model.QuietSchedule
 import com.muzrc.model.ThemeMode
 import com.muzrc.model.UserPreferences
-import com.google.firebase.Firebase
-import com.google.firebase.auth.auth
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
@@ -32,7 +29,6 @@ class SenyapRepository(
     private val scheduleDao: QuietScheduleDao,
     private val activityLogDao: ActivityLogDao,
     private val preferencesStore: PreferencesDataStore,
-    private val cloudRepository: CloudBackupRepository,
     private val installedAppsProvider: InstalledAppsProvider
 ) {
     val preferencesFlow: Flow<UserPreferences> = preferencesStore.preferencesFlow
@@ -55,66 +51,38 @@ class SenyapRepository(
         installedAppsProvider.loadLaunchableApps()
     }
 
-    suspend fun setThemeMode(mode: ThemeMode): Result<Unit> {
+    suspend fun setThemeMode(mode: ThemeMode) {
         preferencesStore.setThemeMode(mode)
-        return syncPreferencesIfSignedIn()
     }
 
-    suspend fun setMonitoringEnabled(enabled: Boolean): Result<Unit> {
+    suspend fun setMonitoringEnabled(enabled: Boolean) {
         preferencesStore.setMonitoringEnabled(enabled)
-        return syncPreferencesIfSignedIn()
     }
 
-    suspend fun setDefaultRestoreOnExit(restore: Boolean): Result<Unit> {
+    suspend fun setDefaultRestoreOnExit(restore: Boolean) {
         preferencesStore.setDefaultRestoreOnExit(restore)
-        return syncPreferencesIfSignedIn()
     }
 
-    suspend fun setPollIntervalMs(intervalMs: Long): Result<Unit> {
+    suspend fun setPollIntervalMs(intervalMs: Long) {
         preferencesStore.setPollIntervalMs(intervalMs)
-        return syncPreferencesIfSignedIn()
     }
 
-    suspend fun saveProfile(profile: AppSoundProfile): Result<Unit> {
+    suspend fun saveProfile(profile: AppSoundProfile) {
         val updated = profile.copy(updatedAtMillis = System.currentTimeMillis())
         profileDao.upsert(AppProfileEntity.fromDomain(updated))
-        val uid = Firebase.auth.currentUser?.uid
-        return if (!uid.isNullOrBlank()) {
-            cloudRepository.saveProfile(uid, updated)
-        } else {
-            Result.success(Unit)
-        }
     }
 
-    suspend fun deleteProfile(packageName: String): Result<Unit> {
+    suspend fun deleteProfile(packageName: String) {
         profileDao.deleteByPackage(packageName)
-        val uid = Firebase.auth.currentUser?.uid
-        return if (!uid.isNullOrBlank()) {
-            cloudRepository.deleteProfile(uid, packageName)
-        } else {
-            Result.success(Unit)
-        }
     }
 
-    suspend fun saveSchedule(schedule: QuietSchedule): Result<Unit> {
+    suspend fun saveSchedule(schedule: QuietSchedule) {
         val updated = schedule.copy(updatedAtMillis = System.currentTimeMillis())
         scheduleDao.upsert(QuietScheduleEntity.fromDomain(updated))
-        val uid = Firebase.auth.currentUser?.uid
-        return if (!uid.isNullOrBlank()) {
-            cloudRepository.saveSchedule(uid, updated)
-        } else {
-            Result.success(Unit)
-        }
     }
 
-    suspend fun deleteSchedule(scheduleId: String): Result<Unit> {
+    suspend fun deleteSchedule(scheduleId: String) {
         scheduleDao.deleteById(scheduleId)
-        val uid = Firebase.auth.currentUser?.uid
-        return if (!uid.isNullOrBlank()) {
-            cloudRepository.deleteSchedule(uid, scheduleId)
-        } else {
-            Result.success(Unit)
-        }
     }
 
     suspend fun recordLog(
@@ -143,16 +111,14 @@ class SenyapRepository(
         activityLogDao.deleteByDate(dateKey)
     }
 
-    suspend fun backupNowToCloud(userId: String): Result<Long> {
+    suspend fun exportBackupJson(): Result<String> {
         return try {
             val prefs = preferencesStore.getPreferencesOnce()
             val profiles = profileDao.getAllOnce().map { it.toDomain() }
             val schedules = scheduleDao.getAllOnce().map { it.toDomain() }
-            val result = cloudRepository.backupAll(userId, prefs, profiles, schedules)
-            result.onSuccess { timestamp ->
-                preferencesStore.setLastCloudBackupAt(timestamp)
-            }
-            result
+            val json = LocalBackupManager.serializeBackup(prefs, profiles, schedules)
+            preferencesStore.setLastBackupAt(System.currentTimeMillis())
+            Result.success(json)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -160,9 +126,9 @@ class SenyapRepository(
         }
     }
 
-    suspend fun restoreFromCloud(userId: String): Result<Int> {
+    suspend fun importBackupJson(jsonString: String): Result<Int> {
         return try {
-            val snapshot = cloudRepository.restoreAllFromCloud(userId).getOrThrow()
+            val snapshot = LocalBackupManager.parseBackup(jsonString)
             var restoredItems = 0
             if (snapshot.preferences != null) {
                 preferencesStore.updateAllPreferences(snapshot.preferences)
@@ -176,38 +142,13 @@ class SenyapRepository(
                 scheduleDao.upsertAll(snapshot.schedules.map { QuietScheduleEntity.fromDomain(it) })
                 restoredItems += snapshot.schedules.size
             }
-            preferencesStore.setLastCloudBackupAt(System.currentTimeMillis())
+            preferencesStore.setLastBackupAt(System.currentTimeMillis())
             Result.success(restoredItems)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
-    }
-
-    suspend fun syncInitialCloudIfLocalEmpty(userId: String) {
-        try {
-            val localProfiles = profileDao.getAllOnce()
-            val localSchedules = scheduleDao.getAllOnce()
-            if (localProfiles.isEmpty() && localSchedules.isEmpty()) {
-                restoreFromCloud(userId)
-            }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (_: Exception) {
-            // Non-fatal initial sync fallback
-        }
-    }
-
-    private suspend fun syncPreferencesIfSignedIn(): Result<Unit> {
-        val uid = Firebase.auth.currentUser?.uid
-        if (uid.isNullOrBlank()) return Result.success(Unit)
-        val prefs = preferencesStore.preferencesFlow.first()
-        val res = cloudRepository.savePreferences(uid, prefs)
-        if (res.isSuccess) {
-            preferencesStore.setLastCloudBackupAt(System.currentTimeMillis())
-        }
-        return res
     }
 
     companion object {

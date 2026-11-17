@@ -1,10 +1,5 @@
 package com.muzrc.model
 
-import androidx.annotation.Keep
-import com.google.firebase.Timestamp
-import com.google.firebase.firestore.DocumentId
-import com.google.firebase.firestore.IgnoreExtraProperties
-
 enum class ThemeMode(val labelMs: String) {
     SISTEM("Ikut Sistem"),
     GELAP("Mod Gelap"),
@@ -77,7 +72,7 @@ data class UserPreferences(
     val monitoringEnabled: Boolean = false,
     val defaultRestoreOnExit: Boolean = true,
     val pollIntervalMs: Long = 1200L,
-    val lastCloudBackupAtMillis: Long? = null
+    val lastBackupAtMillis: Long? = null
 )
 
 data class ActivityLogEntry(
@@ -96,57 +91,3 @@ data class InstalledAppInfo(
     val packageName: String,
     val appName: String
 )
-
-@Keep
-@IgnoreExtraProperties
-data class CloudUserPreferences(
-    @DocumentId val id: String = "",
-    val userId: String = "",
-    val themeMode: String = ThemeMode.SISTEM.name,
-    val monitoringEnabled: Boolean = false,
-    val defaultRestoreOnExit: Boolean = true,
-    val pollIntervalMs: Long = 1200L,
-    val createdAt: Timestamp? = null,
-    val updatedAt: Timestamp? = null
-)
-
-@Keep
-@IgnoreExtraProperties
-data class CloudAppSoundProfile(
-    @DocumentId val id: String = "",
-    val userId: String = "",
-    val packageName: String = "",
-    val appName: String = "",
-    val monitored: Boolean = true,
-    val profileMode: String = ProfileMode.SENYAP.name,
-    val targetVolumePercent: Long = 0L,
-    val restoreOnExit: Boolean = true,
-    val scheduleOnly: Boolean = false,
-    val createdAt: Timestamp? = null,
-    val updatedAt: Timestamp? = null
-)
-
-@Keep
-@IgnoreExtraProperties
-data class CloudQuietSchedule(
-    @DocumentId val id: String = "",
-    val userId: String = "",
-    val title: String = "",
-    val startHour: Long = 22L,
-    val startMinute: Long = 0L,
-    val endHour: Long = 6L,
-    val endMinute: Long = 0L,
-    val daysOfWeek: List<Long> = listOf(1L, 2L, 3L, 4L, 5L, 6L, 7L),
-    val targetVolumePercent: Long = 0L,
-    val applyToAllApps: Boolean = true,
-    val enabled: Boolean = true,
-    val createdAt: Timestamp? = null,
-    val updatedAt: Timestamp? = null
-)
-
-fun sanitizeFirestoreDocId(raw: String): String {
-    val cleaned = raw.replace(Regex("[^a-zA-Z0-9_\\-]"), "_")
-        .trim('_')
-        .take(128)
-    return cleaned.ifEmpty { "doc_${raw.hashCode().toUInt()}" }
-}

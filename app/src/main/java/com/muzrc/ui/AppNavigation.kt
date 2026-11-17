@@ -44,7 +44,6 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -67,20 +66,15 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.muzrc.SenyapPintarApp
-import com.muzrc.auth.authStateFlow
 import com.muzrc.data.UsageAccessHelper
 import com.muzrc.model.ThemeMode
 import com.muzrc.service.MediaMonitorForegroundService
-import com.muzrc.ui.screens.AuthScreen
 import com.muzrc.ui.screens.DashboardScreen
 import com.muzrc.ui.screens.LogsScreen
 import com.muzrc.ui.screens.ProfilesScreen
 import com.muzrc.ui.screens.SchedulesScreen
 import com.muzrc.ui.screens.SettingsScreen
 import com.muzrc.ui.viewmodel.MainViewModel
-import com.google.firebase.Firebase
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.auth.auth
 
 const val ROUTE_DASHBOARD = "dashboard"
 const val ROUTE_PROFILES = "profiles"
@@ -103,33 +97,16 @@ private val navItems = listOf(
     NavDestinationItem(ROUTE_SETTINGS, "Tetapan", Icons.Rounded.Settings, Icons.Outlined.Settings)
 )
 
-@Composable
-fun AppNavigation(auth: FirebaseAuth = Firebase.auth) {
-    val currentUser by auth.authStateFlow()
-        .collectAsStateWithLifecycle(initialValue = auth.currentUser)
-    val user = currentUser
-
-    if (user == null) {
-        AuthScreen(onAuthSuccess = {})
-    } else {
-        key(user.uid) {
-            AuthenticatedAppShell(currentUserId = user.uid)
-        }
-    }
-}
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AuthenticatedAppShell(currentUserId: String) {
+fun AppNavigation() {
     val viewModel: MainViewModel = viewModel(
-        key = currentUserId,
         factory = viewModelFactory {
             initializer {
                 val app = checkNotNull(this[APPLICATION_KEY]) as SenyapPintarApp
                 MainViewModel(
                     repository = app.container.repository,
-                    audioController = app.container.audioController,
-                    currentUserId = currentUserId
+                    audioController = app.container.audioController
                 )
             }
         }
@@ -144,7 +121,7 @@ private fun AuthenticatedAppShell(currentUserId: String) {
     val logsState by viewModel.logsState.collectAsStateWithLifecycle()
     val runtimeStatus by viewModel.runtimeStatus.collectAsStateWithLifecycle()
     val manualVolumePercent by viewModel.manualVolumePercent.collectAsStateWithLifecycle()
-    val cloudSyncState by viewModel.cloudSyncState.collectAsStateWithLifecycle()
+    val backupState by viewModel.backupState.collectAsStateWithLifecycle()
     val snackbarMessage by viewModel.snackbarMessage.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
@@ -368,12 +345,12 @@ private fun AuthenticatedAppShell(currentUserId: String) {
                         composable(ROUTE_SETTINGS) {
                             SettingsScreen(
                                 preferences = preferences,
-                                cloudSyncState = cloudSyncState,
+                                backupState = backupState,
                                 onSetThemeMode = viewModel::setThemeMode,
                                 onSetDefaultRestoreOnExit = viewModel::setDefaultRestoreOnExit,
                                 onSetPollIntervalMs = viewModel::setPollIntervalMs,
-                                onBackupNow = viewModel::backupNowToCloud,
-                                onRestoreFromCloud = viewModel::restoreFromCloud
+                                onExportBackupUri = { uri -> viewModel.exportBackupToUri(context, uri) },
+                                onImportBackupUri = { uri -> viewModel.importBackupFromUri(context, uri) }
                             )
                         }
                     }

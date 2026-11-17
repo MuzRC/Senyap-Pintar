@@ -1,5 +1,7 @@
 package com.muzrc.ui.viewmodel
 
+import android.content.Context
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.muzrc.data.AudioVolumeController
@@ -15,6 +17,7 @@ import com.muzrc.model.UserPreferences
 import com.muzrc.service.MediaMonitorForegroundService
 import com.muzrc.service.MonitorRuntimeStatus
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -25,18 +28,18 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.Calendar
 import java.util.UUID
 
-data class CloudSyncState(
-    val isSyncing: Boolean = false,
+data class BackupState(
+    val isProcessing: Boolean = false,
     val statusMessage: String? = null
 )
 
 class MainViewModel(
     private val repository: SenyapRepository,
-    private val audioController: AudioVolumeController,
-    private val currentUserId: String
+    private val audioController: AudioVolumeController
 ) : ViewModel() {
 
     val preferences: StateFlow<UserPreferences> = repository.preferencesFlow
@@ -108,17 +111,14 @@ class MainViewModel(
     private val _manualVolumePercent = MutableStateFlow(audioController.getCurrentMediaVolumePercent())
     val manualVolumePercent: StateFlow<Int> = _manualVolumePercent.asStateFlow()
 
-    private val _cloudSyncState = MutableStateFlow(CloudSyncState())
-    val cloudSyncState: StateFlow<CloudSyncState> = _cloudSyncState.asStateFlow()
+    private val _backupState = MutableStateFlow(BackupState())
+    val backupState: StateFlow<BackupState> = _backupState.asStateFlow()
 
     private val _snackbarMessage = MutableStateFlow<String?>(null)
     val snackbarMessage: StateFlow<String?> = _snackbarMessage.asStateFlow()
 
     init {
         refreshInstalledApps()
-        viewModelScope.launch {
-            repository.syncInitialCloudIfLocalEmpty(currentUserId)
-        }
     }
 
     fun refreshInstalledApps() {
@@ -138,17 +138,13 @@ class MainViewModel(
 
     fun setThemeMode(mode: ThemeMode) {
         viewModelScope.launch {
-            repository.setThemeMode(mode).onFailure {
-                _snackbarMessage.value = "Tema dikemas kini secara tempatan (sandaran awan tertunda)."
-            }
+            repository.setThemeMode(mode)
         }
     }
 
     fun setMonitoringEnabled(enabled: Boolean) {
         viewModelScope.launch {
-            repository.setMonitoringEnabled(enabled).onFailure {
-                _snackbarMessage.value = "Status pemantauan disimpan secara tempatan."
-            }
+            repository.setMonitoringEnabled(enabled)
         }
     }
 
@@ -166,12 +162,8 @@ class MainViewModel(
 
     fun saveProfile(profile: AppSoundProfile) {
         viewModelScope.launch {
-            val result = repository.saveProfile(profile)
-            _snackbarMessage.value = if (result.isSuccess) {
-                "Profil ${profile.appName} disimpan."
-            } else {
-                "Profil ${profile.appName} disimpan di peranti (sandaran awan gagal)."
-            }
+            repository.saveProfile(profile)
+            _snackbarMessage.value = "Profil ${profile.appName} disimpan."
         }
     }
 
@@ -181,12 +173,8 @@ class MainViewModel(
 
     fun deleteProfile(packageName: String, appName: String) {
         viewModelScope.launch {
-            val result = repository.deleteProfile(packageName)
-            _snackbarMessage.value = if (result.isSuccess) {
-                "Profil $appName dipadamkan."
-            } else {
-                "Profil $appName dipadamkan secara tempatan."
-            }
+            repository.deleteProfile(packageName)
+            _snackbarMessage.value = "Profil $appName dipadamkan."
         }
     }
 
@@ -228,12 +216,8 @@ class MainViewModel(
             updatedAtMillis = now
         )
         viewModelScope.launch {
-            val result = repository.saveSchedule(schedule)
-            _snackbarMessage.value = if (result.isSuccess) {
-                "Jadual \"${schedule.title}\" disimpan."
-            } else {
-                "Jadual disimpan secara tempatan (sandaran awan tertunda)."
-            }
+            repository.saveSchedule(schedule)
+            _snackbarMessage.value = "Jadual \"${schedule.title}\" disimpan."
         }
     }
 
@@ -272,49 +256,59 @@ class MainViewModel(
         )
     }
 
-    fun backupNowToCloud() {
+    fun exportBackupToUri(context: Context, uri: Uri) {
+        val appContext = context.applicationContext
         viewModelScope.launch {
-            _cloudSyncState.value = CloudSyncState(isSyncing = true, statusMessage = "Menyandar ke awan...")
-            val result = repository.backupNowToCloud(currentUserId)
-            result.fold(
-                onSuccess = {
-                    _cloudSyncState.value = CloudSyncState(
-                        isSyncing = false,
-                        statusMessage = "Sandaran awan berjaya disiapkan."
-                    )
-                    _snackbarMessage.value = "Semua tetapan dan profil berjaya disandarkan ke awan."
-                },
-                onFailure = { err ->
-                    val msg = err.localizedMessage ?: "Gagal menyandar ke awan."
-                    _cloudSyncState.value = CloudSyncState(isSyncing = false, statusMessage = msg)
-                    _snackbarMessage.value = "Sandaran awan gagal: $msg"
+            _backupState.value = BackupState(isProcessing = true, statusMessage = "Mengeksport sandaran...")
+            try {
+                val json = repository.exportBackupJson().getOrThrow()
+                withContext(Dispatchers.IO) {
+                    appContext.contentResolver.openOutputStream(uri)?.use { stream ->
+                        stream.write(json.toByteArray(Charsets.UTF_8))
+                    } ?: throw IllegalStateException("Tidak dapat membuka fail destinasi.")
                 }
-            )
+                _backupState.value = BackupState(
+                    isProcessing = false,
+                    statusMessage = "Fail sandaran berjaya disimpan."
+                )
+                _snackbarMessage.value = "Tetapan, profil, dan jadual berjaya dieksport."
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                val msg = e.localizedMessage ?: "Gagal mengeksport sandaran."
+                _backupState.value = BackupState(isProcessing = false, statusMessage = msg)
+                _snackbarMessage.value = "Eksport gagal: $msg"
+            }
         }
     }
 
-    fun restoreFromCloud() {
+    fun importBackupFromUri(context: Context, uri: Uri) {
+        val appContext = context.applicationContext
         viewModelScope.launch {
-            _cloudSyncState.value = CloudSyncState(isSyncing = true, statusMessage = "Memulihkan daripada awan...")
-            val result = repository.restoreFromCloud(currentUserId)
-            result.fold(
-                onSuccess = { count ->
-                    _cloudSyncState.value = CloudSyncState(
-                        isSyncing = false,
-                        statusMessage = "$count item dipulihkan daripada awan."
-                    )
-                    _snackbarMessage.value = if (count > 0) {
-                        "$count tetapan dan profil berjaya dipulihkan."
-                    } else {
-                        "Tiada data sandaran awan ditemui untuk akaun ini."
-                    }
-                },
-                onFailure = { err ->
-                    val msg = err.localizedMessage ?: "Gagal memulihkan data awan."
-                    _cloudSyncState.value = CloudSyncState(isSyncing = false, statusMessage = msg)
-                    _snackbarMessage.value = "Pemulihan awan gagal: $msg"
+            _backupState.value = BackupState(isProcessing = true, statusMessage = "Memulihkan fail sandaran...")
+            try {
+                val json = withContext(Dispatchers.IO) {
+                    appContext.contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use {
+                        it.readText()
+                    } ?: throw IllegalStateException("Tidak dapat membaca fail sandaran.")
                 }
-            )
+                val count = repository.importBackupJson(json).getOrThrow()
+                _backupState.value = BackupState(
+                    isProcessing = false,
+                    statusMessage = "$count item dipulihkan daripada fail."
+                )
+                _snackbarMessage.value = if (count > 0) {
+                    "$count tetapan dan profil berjaya dipulihkan."
+                } else {
+                    "Tiada data sandaran sah ditemui dalam fail ini."
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                val msg = e.localizedMessage ?: "Gagal membaca fail sandaran."
+                _backupState.value = BackupState(isProcessing = false, statusMessage = msg)
+                _snackbarMessage.value = "Pemulihan gagal: $msg"
+            }
         }
     }
 
