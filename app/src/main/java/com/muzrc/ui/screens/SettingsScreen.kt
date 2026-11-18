@@ -482,8 +482,7 @@ fun SettingsScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        text = "Versi semasa: v${BuildConfig.VERSION_NAME} (Build ${BuildConfig.VERSION_CODE})
-" +
+                        text = "Versi semasa: v${BuildConfig.VERSION_NAME} (Build ${BuildConfig.VERSION_CODE})\n" +
                             "Versi baharu: v${release.latestVersion} (Build ${release.versionCode})",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant

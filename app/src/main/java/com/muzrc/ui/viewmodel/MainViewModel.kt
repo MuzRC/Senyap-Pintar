@@ -229,7 +229,7 @@ class MainViewModel(
         )
         viewModelScope.launch {
             repository.saveSchedule(schedule)
-            _snackbarMessage.value = "Jadual "${schedule.title}" disimpan."
+            _snackbarMessage.value = "Jadual \"${schedule.title}\" disimpan."
         }
     }
 
@@ -242,7 +242,7 @@ class MainViewModel(
     fun deleteSchedule(schedule: QuietSchedule) {
         viewModelScope.launch {
             repository.deleteSchedule(schedule.id)
-            _snackbarMessage.value = "Jadual "${schedule.title}" dipadamkan."
+            _snackbarMessage.value = "Jadual \"${schedule.title}\" dipadamkan."
         }
     }
 

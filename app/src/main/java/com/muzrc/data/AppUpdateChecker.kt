@@ -16,9 +16,8 @@ data class AppReleaseInfo(
 )
 
 object AppUpdateChecker {
-    // Tukar "muzrc/SenyapPintar" jika nama pemilik atau repositori GitHub anda berbeza
     const val DEFAULT_VERSION_JSON_URL =
-        "https://raw.githubusercontent.com/muzrc/SenyapPintar/main/version.json"
+        "https://raw.githubusercontent.com/muzrc/Senyap-Pintar/main/version.json"
 
     suspend fun checkForUpdate(
         versionJsonUrl: String = DEFAULT_VERSION_JSON_URL
